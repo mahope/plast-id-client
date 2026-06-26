@@ -44,11 +44,16 @@ export function plastIdServerPlugins(env: Env = process.env) {
  * emails, så import-by-email + dual-write kobler til en eksisterende lokal række
  * (på samme email) frem for at lave en dublet.
  */
-export const plastIdAccountLinking = {
+export const plastIdAccountLinking: {
+  enabled: boolean;
+  trustedProviders: string[];
+  allowDifferentEmails: boolean;
+} = {
   enabled: true,
+  // Mutabel string[] (ikke readonly) — Better Auths accountLinking-type kræver det.
   trustedProviders: [PLAST_ID_PROVIDER_ID],
   allowDifferentEmails: false,
-} as const;
+};
 
 /**
  * Udtræk roller fra Plast ID's `roles`-claim. GLOBAL/additiv: app-scoped roller
