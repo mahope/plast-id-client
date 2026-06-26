@@ -18,8 +18,9 @@ allerede privat GitHub-adgang i deres Docker-build):
 
 `prepare`-scriptet bygger pakken (`tsc`) ved install, så `dist/` er klar i app'ens build.
 
-> **better-auth peer-dep:** `>=1.2.8`. Suiten kører pt. på 1.2.8 (plast-id, plastsurgeon),
-> 1.3.34 (jpbrs) og 1.4.18 (surgai) — bør alignes (se identitets-sync-spec, "Tværgående").
+> **better-auth peer-dep:** `>=1.2.8`. Hele suiten er alignet på **1.6.22** (2026-06-26).
+> Testet mod 1.6.22. (Bemærk: better-auths `oidcProvider`-plugin er deprecated i 1.6 —
+> migration til `@better-auth/oauth-provider` er en separat follow-up på IdP-siden.)
 
 ## Env
 
