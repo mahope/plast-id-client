@@ -8,6 +8,12 @@
  * vælg den senest opdaterede række — brug `freshestIdToken()` frem for at slå
  * en enkelt providerId op. Ingen ekstra user-felter eller migrationer nødvendige.
  *
+ * STALENESS (kendt, accepteret indtil videre — plast-id#12): claimen er kun så
+ * frisk som brugerens SENESTE OIDC-login i appen. Central tilbagekaldelse slår
+ * først igennem ved næste re-auth; med rullende lokale sessioner kan det for en
+ * aktiv bruger være længe. Bounded revocation (live roles-endpoint eller
+ * alders-cap + silent re-auth) er planlagt i plast-id#12.
+ *
  * Decode sker UDEN signaturverifikation: tokenet kom fra IdP'ens token-endpoint
  * over TLS i et fortroligt server-til-server-exchange og er allerede betroet.
  * Brug det derfor KUN på tokens læst fra egen database (account.idToken) —
