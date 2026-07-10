@@ -112,7 +112,10 @@ describe("fetchCentralRolesClaim", () => {
     expect(roles).toEqual(["admin", "editor:plastsurgeon"]);
     expect(fetchImpl).toHaveBeenCalledWith(
       "https://id.mahoje.dk/api/roles?email=a%40b.com",
-      { headers: { Authorization: "Bearer ptok" } },
+      expect.objectContaining({
+        headers: { Authorization: "Bearer ptok" },
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
