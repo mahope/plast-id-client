@@ -99,6 +99,28 @@ export function resolveEffectiveRoles(
   return [...out];
 }
 
+/**
+ * Udled de roller der gælder for ÉN app fra Plast ID's roles-claim.
+ * Claim-format (IdP'ens buildRolesClaim): globale roller som bar slug
+ * ("admin"), app-scoped som "role:appId" ("editor:jpbrs"). Returnerer
+ * globale + denne apps scoped roller, med scope strippet og deduperet.
+ */
+export function centralRolesForApp(claim: string[] | null | undefined, appId: string): string[] {
+  if (!Array.isArray(claim)) return [];
+  const out = new Set<string>();
+  for (const entry of claim) {
+    if (typeof entry !== "string" || !entry) continue;
+    const idx = entry.indexOf(":");
+    if (idx === -1) {
+      out.add(entry); // global
+    } else if (entry.slice(idx + 1) === appId) {
+      const role = entry.slice(0, idx);
+      if (role) out.add(role);
+    }
+  }
+  return [...out];
+}
+
 /** Har brugeren rollen — lokalt eller centralt? */
 export function hasEffectiveRole(
   role: string,

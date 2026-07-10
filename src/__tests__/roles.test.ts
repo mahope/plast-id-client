@@ -5,6 +5,7 @@ import {
   resolveEffectiveRoles,
   hasEffectiveRole,
   freshestIdToken,
+  centralRolesForApp,
 } from "../roles.js";
 
 function makeIdToken(payload: Record<string, unknown>): string {
@@ -83,6 +84,27 @@ describe("resolveEffectiveRoles", () => {
 
   it("trimmer whitespace og dropper tomme strenge", () => {
     expect(resolveEffectiveRoles([" admin ", ""], ["  "])).toEqual(["admin"]);
+  });
+});
+
+describe("centralRolesForApp", () => {
+  it("medtager globale roller og denne apps scoped roller (scope strippet)", () => {
+    expect(
+      centralRolesForApp(["admin", "editor:jpbrs", "author:plastsurgeon"], "jpbrs"),
+    ).toEqual(["admin", "editor"]);
+  });
+
+  it("ignorerer andre apps' scoped roller", () => {
+    expect(centralRolesForApp(["reviewer:surgai"], "jpbrs")).toEqual([]);
+  });
+
+  it("dedupérer når global og scoped giver samme rolle", () => {
+    expect(centralRolesForApp(["editor", "editor:jpbrs"], "jpbrs")).toEqual(["editor"]);
+  });
+
+  it("fail-safe ved malformede entries og null", () => {
+    expect(centralRolesForApp(null, "jpbrs")).toEqual([]);
+    expect(centralRolesForApp([":jpbrs", "", "admin"], "jpbrs")).toEqual(["admin"]);
   });
 });
 
