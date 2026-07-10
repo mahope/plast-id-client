@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   fetchCentralRolesClaim,
   createRolesTtlCache,
+  createLiveRolesLookup,
   decodeIdTokenClaims,
   rolesFromIdToken,
   resolveEffectiveRoles,
@@ -134,6 +135,38 @@ describe("fetchCentralRolesClaim", () => {
   it("filtrerer ikke-streng-entries fra svaret", async () => {
     const fetchImpl = vi.fn(async () => jsonRes(200, { roles: ["admin", 42, null] }));
     expect(await fetchCentralRolesClaim("a@b.com", { env: ENV, fetchImpl })).toEqual(["admin"]);
+  });
+});
+
+describe("createLiveRolesLookup", () => {
+  it("cacher autoritative svar i positiv TTL (ét fetch-kald)", async () => {
+    const fetchImpl = vi.fn(async () => jsonRes(200, { roles: ["admin"] }));
+    const lookup = createLiveRolesLookup({ env: ENV, fetchImpl });
+    expect(await lookup("a@b.com")).toEqual(["admin"]);
+    expect(await lookup("a@b.com")).toEqual(["admin"]);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("negative-cacher fejl kort, så nedetid ikke rammer hvert request", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn(async () => jsonRes(500));
+    const lookup = createLiveRolesLookup({ env: ENV, fetchImpl, negativeTtlMs: 30_000 });
+    expect(await lookup("a@b.com")).toBeNull();
+    expect(await lookup("a@b.com")).toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(1); // negativ cache-hit
+    vi.advanceTimersByTime(31_000);
+    await lookup("a@b.com");
+    expect(fetchImpl).toHaveBeenCalledTimes(2); // genprøvet efter negativ TTL
+    vi.useRealTimers();
+  });
+
+  it("sender timeout-signal til fetch (hængende IdP blokerer ikke)", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      return jsonRes(200, { roles: [] });
+    });
+    await createLiveRolesLookup({ env: ENV, fetchImpl: fetchImpl as unknown as typeof fetch })("a@b.com");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -148,7 +148,7 @@ export function centralRolesForApp(claim: string[] | null | undefined, appId: st
  */
 export async function fetchCentralRolesClaim(
   email: string,
-  opts: { env?: Env; fetchImpl?: typeof fetch } = {},
+  opts: { env?: Env; fetchImpl?: typeof fetch; timeoutMs?: number } = {},
 ): Promise<string[] | null> {
   const env = opts.env ?? process.env;
   const doFetch = opts.fetchImpl ?? fetch;
@@ -157,7 +157,12 @@ export async function fetchCentralRolesClaim(
   try {
     const res = await doFetch(
       `${trimSlash(c.issuer)}${ROLES_LOOKUP_PATH}?email=${encodeURIComponent(email)}`,
-      { headers: { Authorization: `Bearer ${c.provisionToken}` } },
+      {
+        headers: { Authorization: `Bearer ${c.provisionToken}` },
+        // Hård tidsgrænse: opslaget sidder i session-resolution på hvert
+        // request — en hængende IdP må ALDRIG blokere sideindlæsninger.
+        signal: AbortSignal.timeout(opts.timeoutMs ?? 2000),
+      },
     );
     if (res.status === 404) return [];
     if (!res.ok) return null;
@@ -190,6 +195,37 @@ export function createRolesTtlCache(ttlMs: number): {
       if (store.size > 5000) store.clear();
       store.set(key, { value, expires: Date.now() + ttlMs });
     },
+  };
+}
+
+/**
+ * Samlet, cachet live-opslag til brug i session-resolution: positiv TTL for
+ * autoritative svar, KORT negativ TTL for fejl (null) — så en IdP-nedetid
+ * ikke udløser et nyt HTTP-forsøg på hvert eneste request, men stadig
+ * genprøves hurtigt. Returnerer samme kontrakt som fetchCentralRolesClaim.
+ */
+export function createLiveRolesLookup(
+  opts: {
+    ttlMs?: number;
+    negativeTtlMs?: number;
+    env?: Env;
+    fetchImpl?: typeof fetch;
+    timeoutMs?: number;
+  } = {},
+): (email: string) => Promise<string[] | null> {
+  const ttl = opts.ttlMs ?? 5 * 60_000;
+  const negativeTtl = opts.negativeTtlMs ?? 30_000;
+  const store = new Map<string, { value: string[] | null; expires: number }>();
+  return async (email: string) => {
+    const hit = store.get(email);
+    if (hit && Date.now() <= hit.expires) return hit.value;
+    const fetched = await fetchCentralRolesClaim(email, opts);
+    if (store.size > 5000) store.clear();
+    store.set(email, {
+      value: fetched,
+      expires: Date.now() + (fetched === null ? negativeTtl : ttl),
+    });
+    return fetched;
   };
 }
 
