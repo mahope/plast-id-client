@@ -4,6 +4,7 @@ import {
   rolesFromIdToken,
   resolveEffectiveRoles,
   hasEffectiveRole,
+  freshestIdToken,
 } from "../roles.js";
 
 function makeIdToken(payload: Record<string, unknown>): string {
@@ -82,6 +83,41 @@ describe("resolveEffectiveRoles", () => {
 
   it("trimmer whitespace og dropper tomme strenge", () => {
     expect(resolveEffectiveRoles([" admin ", ""], ["  "])).toEqual(["admin"]);
+  });
+});
+
+describe("freshestIdToken", () => {
+  it("vælger den senest opdaterede Plast ID-række på tværs af normal + silent", () => {
+    expect(
+      freshestIdToken([
+        { providerId: "plast-id", idToken: "gammel", updatedAt: new Date("2026-07-01") },
+        { providerId: "plast-id-silent", idToken: "frisk", updatedAt: new Date("2026-07-10") },
+      ]),
+    ).toBe("frisk");
+  });
+
+  it("ignorerer andre providers og rækker uden idToken", () => {
+    expect(
+      freshestIdToken([
+        { providerId: "google", idToken: "google-token", updatedAt: new Date("2026-07-10") },
+        { providerId: "plast-id", idToken: null, updatedAt: new Date("2026-07-10") },
+        { providerId: "plast-id", idToken: "eneste", updatedAt: new Date("2026-06-01") },
+      ]),
+    ).toBe("eneste");
+  });
+
+  it("tåler updatedAt som string og manglende updatedAt", () => {
+    expect(
+      freshestIdToken([
+        { providerId: "plast-id", idToken: "uden-dato" },
+        { providerId: "plast-id-silent", idToken: "med-dato", updatedAt: "2026-07-10T00:00:00Z" },
+      ]),
+    ).toBe("med-dato");
+  });
+
+  it("null når ingen kandidater", () => {
+    expect(freshestIdToken([])).toBeNull();
+    expect(freshestIdToken([{ providerId: "github", idToken: "x" }])).toBeNull();
   });
 });
 

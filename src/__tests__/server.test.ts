@@ -41,6 +41,9 @@ describe("plastIdServerPlugins", () => {
 describe("plastIdAccountLinking", () => {
   it("gør plast-id til trusted provider og forbyder forskellige emails", () => {
     expect(plastIdAccountLinking.trustedProviders).toContain(PLAST_ID_PROVIDER_ID);
+    // Silent-provideren repræsenterer samme tillidsforhold og SKAL være trusted,
+    // ellers fejler første silent login hårdt for brugere med uverificeret email.
+    expect(plastIdAccountLinking.trustedProviders).toContain("plast-id-silent");
     expect(plastIdAccountLinking.allowDifferentEmails).toBe(false);
     expect(plastIdAccountLinking.enabled).toBe(true);
   });

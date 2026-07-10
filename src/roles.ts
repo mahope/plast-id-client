@@ -2,9 +2,11 @@
  * Plast ID-klient — centrale roller fra ID-token.
  *
  * Plast ID udsteder en `roles`-claim i ID-tokenet (RBAC, tier1b). Better Auth
- * gemmer ID-tokenet på account-rækken og opdaterer det ved HVERT login, så den
- * gemte token er den friskeste kilde til brugerens centrale roller — ingen
- * ekstra user-felter eller migrationer nødvendige.
+ * gemmer ID-tokenet på account-rækken og opdaterer det ved hvert login — men
+ * PR. PROVIDER: normalt login opdaterer `plast-id`-rækken, silent login
+ * `plast-id-silent`-rækken. Læs derfor ALTID på tværs af begge provider-ids og
+ * vælg den senest opdaterede række — brug `freshestIdToken()` frem for at slå
+ * en enkelt providerId op. Ingen ekstra user-felter eller migrationer nødvendige.
  *
  * Decode sker UDEN signaturverifikation: tokenet kom fra IdP'ens token-endpoint
  * over TLS i et fortroligt server-til-server-exchange og er allerede betroet.
@@ -14,6 +16,36 @@
  * Rettighedsmodel: appens LOKALE rolle er autoritativ; centrale roller er
  * ADDITIVE (kan give adgang, aldrig fjerne den).
  */
+import { PLAST_ID_PROVIDER_ID, PLAST_ID_SILENT_PROVIDER_ID } from "./config.js";
+
+/** Begge provider-ids der repræsenterer Plast ID-identiteten i account-tabellen. */
+export const PLAST_ID_PROVIDER_IDS: readonly string[] = [
+  PLAST_ID_PROVIDER_ID,
+  PLAST_ID_SILENT_PROVIDER_ID,
+];
+
+/** Minimal form af en Better Auth account-række som vi behøver den. */
+export interface PlastIdAccountLike {
+  providerId: string;
+  idToken?: string | null;
+  updatedAt?: Date | string | null;
+}
+
+/**
+ * Vælg det friskeste Plast ID-idToken blandt en brugers account-rækker.
+ * Filtrerer til Plast ID-providers (normal + silent), kræver et idToken, og
+ * vælger den senest opdaterede række. `null` hvis ingen kandidater.
+ */
+export function freshestIdToken(accounts: PlastIdAccountLike[]): string | null {
+  const ts = (a: PlastIdAccountLike) => {
+    const d = a.updatedAt instanceof Date ? a.updatedAt : a.updatedAt ? new Date(a.updatedAt) : null;
+    return d && !Number.isNaN(d.getTime()) ? d.getTime() : 0;
+  };
+  const candidates = accounts
+    .filter((a) => PLAST_ID_PROVIDER_IDS.includes(a.providerId) && a.idToken)
+    .sort((a, b) => ts(b) - ts(a));
+  return candidates[0]?.idToken ?? null;
+}
 
 function base64UrlDecode(segment: string): string {
   const b64 = segment.replace(/-/g, "+").replace(/_/g, "/");
