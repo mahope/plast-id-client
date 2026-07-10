@@ -145,4 +145,11 @@ describe("attemptSilentSSO", () => {
     expect(await attemptSilentSSO(client, { hasLocalSession: false })).toBe(false);
     expect(oauth2).not.toHaveBeenCalled();
   });
+
+  it("fail-safe: kaster aldrig når sign-in-kaldet fejler (IdP nede)", async () => {
+    stubBrowser();
+    const oauth2 = vi.fn().mockRejectedValue(new Error("fetch failed"));
+    const result = await attemptSilentSSO({ signIn: { oauth2 } }, { hasLocalSession: false });
+    expect(result).toBe(false);
+  });
 });

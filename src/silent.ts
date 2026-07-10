@@ -127,9 +127,17 @@ export async function attemptSilentSSO(
     return false;
   }
   document.cookie = silentGuardCookie(opts.guardMaxAgeSeconds);
-  await authClient.signIn.oauth2({
-    providerId: "plast-id-silent",
-    callbackURL: opts.returnTo ?? window.location.href,
-  });
+  try {
+    await authClient.signIn.oauth2({
+      providerId: "plast-id-silent",
+      callbackURL: opts.returnTo ?? window.location.href,
+    });
+  } catch {
+    // Fail-safe: kan IdP'en ikke nås (discovery-fejl, nede, netværk) sker der
+    // ingen navigation — brugeren bliver på siden med login-formularen, og
+    // guarden forhindrer gen-forsøg i guard-vinduet. Silent SSO må ALDRIG
+    // vælte login-siden.
+    return false;
+  }
   return true;
 }
