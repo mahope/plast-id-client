@@ -22,7 +22,15 @@
  * Rettighedsmodel: appens LOKALE rolle er autoritativ; centrale roller er
  * ADDITIVE (kan give adgang, aldrig fjerne den).
  */
-import { PLAST_ID_PROVIDER_ID, PLAST_ID_SILENT_PROVIDER_ID } from "./config.js";
+import {
+  PLAST_ID_PROVIDER_ID,
+  PLAST_ID_SILENT_PROVIDER_ID,
+  ROLES_LOOKUP_PATH,
+  plastIdConfig,
+  trimSlash,
+} from "./config.js";
+
+type Env = Record<string, string | undefined>;
 
 /** Begge provider-ids der repræsenterer Plast ID-identiteten i account-tabellen. */
 export const PLAST_ID_PROVIDER_IDS: readonly string[] = [
@@ -125,6 +133,64 @@ export function centralRolesForApp(claim: string[] | null | undefined, appId: st
     }
   }
   return [...out];
+}
+
+/**
+ * Live-opslag af centrale roller hos IdP'en (bounded revocation, plast-id#12).
+ * Autentificeres med appens provision-token; IdP'en scoper selv svaret til den
+ * kaldende app (globale + egne app-scoped entries, claim-format).
+ *
+ * Returværdier:
+ *  - string[] — brugerens aktuelle claim-entries ([] = findes ikke centralt
+ *    eller ingen roller; det ER et autoritativt svar).
+ *  - null — opslag ikke muligt (ikke konfigureret / netværk / serverfejl);
+ *    caller bør falde tilbage til idToken-metoden.
+ */
+export async function fetchCentralRolesClaim(
+  email: string,
+  opts: { env?: Env; fetchImpl?: typeof fetch } = {},
+): Promise<string[] | null> {
+  const env = opts.env ?? process.env;
+  const doFetch = opts.fetchImpl ?? fetch;
+  const c = plastIdConfig(env);
+  if (!c.issuer || !c.provisionToken || !email) return null;
+  try {
+    const res = await doFetch(
+      `${trimSlash(c.issuer)}${ROLES_LOOKUP_PATH}?email=${encodeURIComponent(email)}`,
+      { headers: { Authorization: `Bearer ${c.provisionToken}` } },
+    );
+    if (res.status === 404) return [];
+    if (!res.ok) return null;
+    const json = (await res.json().catch(() => null)) as { roles?: unknown } | null;
+    if (!json || !Array.isArray(json.roles)) return null;
+    return json.roles.filter((r): r is string => typeof r === "string");
+  } catch {
+    return null;
+  }
+}
+
+/** Minimal per-proces TTL-cache til rolle-opslag (server-side). */
+export function createRolesTtlCache(ttlMs: number): {
+  get(key: string): string[] | undefined;
+  set(key: string, value: string[]): void;
+} {
+  const store = new Map<string, { value: string[]; expires: number }>();
+  return {
+    get(key) {
+      const hit = store.get(key);
+      if (!hit) return undefined;
+      if (Date.now() > hit.expires) {
+        store.delete(key);
+        return undefined;
+      }
+      return hit.value;
+    },
+    set(key, value) {
+      // Simpel bound så cachen ikke vokser ubegrænset i langlivede processer.
+      if (store.size > 5000) store.clear();
+      store.set(key, { value, expires: Date.now() + ttlMs });
+    },
+  };
 }
 
 /** Har brugeren rollen — lokalt eller centralt? */
