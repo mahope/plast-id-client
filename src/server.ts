@@ -6,6 +6,7 @@
 import { genericOAuth } from "better-auth/plugins";
 import {
   PLAST_ID_PROVIDER_ID,
+  PLAST_ID_SILENT_PROVIDER_ID,
   plastIdConfig,
   isPlastIdConfigured,
   discoveryUrl,
@@ -18,21 +19,28 @@ type Env = Record<string, string | undefined>;
 /**
  * Plast ID som OIDC-client. Returnerer en plugin-liste til betterAuth({ plugins })
  * — tom liste hvis SSO ikke er konfigureret (så appen kører videre på lokalt login).
+ *
+ * Registrerer to providers mod samme IdP-client:
+ *  - `plast-id`        — normalt interaktivt login ("Fortsæt med Plast ID").
+ *  - `plast-id-silent` — silent SSO (`prompt=none`): har brugeren en master-session
+ *    hos IdP'en etableres lokal session uden interaktion; ellers svarer IdP'en med
+ *    `error=login_required` (ikke en hård fejl — håndteres app-side).
  */
 export function plastIdServerPlugins(env: Env = process.env) {
   if (!isPlastIdConfigured(env)) return [];
   const c = plastIdConfig(env);
+  const base = {
+    clientId: c.clientId!,
+    clientSecret: c.clientSecret!,
+    discoveryUrl: discoveryUrl(c.issuer!),
+    scopes: ["openid", "profile", "email"],
+    pkce: true,
+  };
   return [
     genericOAuth({
       config: [
-        {
-          providerId: PLAST_ID_PROVIDER_ID,
-          clientId: c.clientId!,
-          clientSecret: c.clientSecret!,
-          discoveryUrl: discoveryUrl(c.issuer!),
-          scopes: ["openid", "profile", "email"],
-          pkce: true,
-        },
+        { providerId: PLAST_ID_PROVIDER_ID, ...base },
+        { providerId: PLAST_ID_SILENT_PROVIDER_ID, ...base, prompt: "none" as const },
       ],
     }),
   ];

@@ -1,6 +1,6 @@
 {
   "name": "@mahope/plast-id-client",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Shared Plast ID SSO client SDK for the Mahope product suite (PlastSurgeon, JPBRS, Plastnurse, SurgAI)",
   "license": "UNLICENSED",
   "private": true,
@@ -23,6 +23,10 @@
     "./silent": {
       "types": "./dist/silent.d.ts",
       "default": "./dist/silent.js"
+    },
+    "./roles": {
+      "types": "./dist/roles.d.ts",
+      "default": "./dist/roles.js"
     },
     "./config": {
       "types": "./dist/config.d.ts",

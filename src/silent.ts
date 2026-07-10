@@ -58,3 +58,78 @@ export function shouldAttemptSilentAuth(input: SilentAuthGuardInput): boolean {
 export function isLoginRequiredError(params: URLSearchParams): boolean {
   return params.get("error") === "login_required";
 }
+
+/* ------------------------------------------------------------------ */
+/* Browser-wiring: one-shot silent-forsøg via Better Auth-klienten     */
+/* ------------------------------------------------------------------ */
+
+/** Guard-cookiens navn (deler navn med query-param-guarden). */
+export const SILENT_GUARD_COOKIE = SILENT_GUARD_PARAM;
+
+/** Standard-TTL for guarden: ét silent-forsøg pr. 10 minutter pr. browser. */
+export const SILENT_GUARD_MAX_AGE_SECONDS = 600;
+
+/** Ren helper: er guard-cookien sat i en `document.cookie`-streng? */
+export function hasSilentGuard(cookieString: string): boolean {
+  return cookieString
+    .split(";")
+    .some((c) => c.trim().startsWith(`${SILENT_GUARD_COOKIE}=`));
+}
+
+/** Ren helper: byg guard-cookiens `Set-Cookie`-værdi (sættes via document.cookie). */
+export function silentGuardCookie(maxAgeSeconds: number = SILENT_GUARD_MAX_AGE_SECONDS): string {
+  return `${SILENT_GUARD_COOKIE}=1; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax`;
+}
+
+/** Minimal form af auth-klienten (undgår hård better-auth-typeafhængighed). */
+export interface SilentSSOAuthClient {
+  signIn: {
+    oauth2: (args: {
+      providerId: string;
+      callbackURL?: string;
+      errorCallbackURL?: string;
+    }) => Promise<unknown>;
+  };
+}
+
+export interface AttemptSilentSSOOptions {
+  /** Hvor brugeren lander efter et succesfuldt silent login. Default: nuværende URL. */
+  returnTo?: string;
+  /** Guard-TTL i sekunder. Default 600. */
+  guardMaxAgeSeconds?: number;
+  /** Har brugeren allerede en lokal session? (fra useSession e.l.) */
+  hasLocalSession: boolean;
+}
+
+/**
+ * Forsøg silent SSO fra browseren — one-shot. Returnerer `true` hvis et forsøg
+ * blev startet (siden navigerer væk til IdP'en), ellers `false` (no-op).
+ *
+ * VIGTIGT (better-auth 1.6): ved IdP-fejl (`login_required`) redirecter callback-
+ * routen til den GLOBALE `onAPIError.errorURL` — IKKE `errorCallbackURL` herfra.
+ * Appen skal derfor pege `onAPIError.errorURL` på en route der tolker
+ * `error=login_required` som "ikke logget ind" og sender brugeren stille videre.
+ */
+export async function attemptSilentSSO(
+  authClient: SilentSSOAuthClient,
+  opts: AttemptSilentSSOOptions,
+): Promise<boolean> {
+  if (typeof document === "undefined" || typeof window === "undefined") return false;
+  if (
+    !shouldAttemptSilentAuth({
+      hasLocalSession: opts.hasLocalSession,
+      alreadyAttempted: hasSilentGuard(document.cookie),
+      isLoginRequiredCallback: isLoginRequiredError(
+        new URLSearchParams(window.location.search),
+      ),
+    })
+  ) {
+    return false;
+  }
+  document.cookie = silentGuardCookie(opts.guardMaxAgeSeconds);
+  await authClient.signIn.oauth2({
+    providerId: "plast-id-silent",
+    callbackURL: opts.returnTo ?? window.location.href,
+  });
+  return true;
+}

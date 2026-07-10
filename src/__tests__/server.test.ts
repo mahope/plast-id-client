@@ -23,6 +23,19 @@ describe("plastIdServerPlugins", () => {
   it("returnerer ét plugin når konfigureret", () => {
     expect(plastIdServerPlugins(configured)).toHaveLength(1);
   });
+  it("registrerer både normal og silent provider (prompt=none) mod samme client", () => {
+    const [plugin] = plastIdServerPlugins(configured);
+    // genericOAuth gemmer sin config på plugin.options.config (better-auth 1.6).
+    const cfg = (plugin as unknown as { options: { config: Array<Record<string, unknown>> } })
+      .options.config;
+    expect(cfg.map((c) => c.providerId)).toEqual(["plast-id", "plast-id-silent"]);
+    const silent = cfg.find((c) => c.providerId === "plast-id-silent")!;
+    expect(silent.prompt).toBe("none");
+    expect(silent.clientId).toBe("plastsurgeon");
+    expect(silent.pkce).toBe(true);
+    const normal = cfg.find((c) => c.providerId === "plast-id")!;
+    expect(normal.prompt).toBeUndefined();
+  });
 });
 
 describe("plastIdAccountLinking", () => {

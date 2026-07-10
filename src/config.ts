@@ -7,11 +7,19 @@
 
 export const PLAST_ID_PROVIDER_ID = "plast-id" as const;
 
+/**
+ * Separat provider-id for silent SSO (`prompt=none`). Better Auth udleder
+ * callback-stien af providerId, så silent-flowet får sin egen redirect-URI —
+ * registreret hos IdP'en side om side med den normale (eksakt match).
+ */
+export const PLAST_ID_SILENT_PROVIDER_ID = "plast-id-silent" as const;
+
 export const DISCOVERY_PATH = "/api/auth/.well-known/openid-configuration";
 export const AUTHORIZE_PATH = "/api/auth/oauth2/authorize";
 export const AUDIT_INGEST_PATH = "/api/audit/ingest";
 export const PROVISION_PATH = "/api/provision";
 export const OAUTH_CALLBACK_PATH = "/api/auth/oauth2/callback/plast-id";
+export const OAUTH_SILENT_CALLBACK_PATH = "/api/auth/oauth2/callback/plast-id-silent";
 
 export interface PlastIdConfig {
   issuer: string;
