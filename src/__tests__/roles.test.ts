@@ -1,5 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
+  fetchCentralRolesClaim,
+  createRolesTtlCache,
   decodeIdTokenClaims,
   rolesFromIdToken,
   resolveEffectiveRoles,
@@ -84,6 +86,70 @@ describe("resolveEffectiveRoles", () => {
 
   it("trimmer whitespace og dropper tomme strenge", () => {
     expect(resolveEffectiveRoles([" admin ", ""], ["  "])).toEqual(["admin"]);
+  });
+});
+
+const ENV = {
+  PLAST_SSO_ISSUER: "https://id.mahoje.dk",
+  PLAST_SSO_CLIENT_ID: "plastsurgeon",
+  PLAST_SSO_CLIENT_SECRET: "s",
+  PLAST_PROVISION_TOKEN: "ptok",
+};
+
+function jsonRes(status: number, body?: unknown) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  } as Response;
+}
+
+describe("fetchCentralRolesClaim", () => {
+  it("henter claim-entries med provision-token mod /api/roles", async () => {
+    const fetchImpl = vi.fn(async () => jsonRes(200, { roles: ["admin", "editor:plastsurgeon"] }));
+    const roles = await fetchCentralRolesClaim("a@b.com", { env: ENV, fetchImpl });
+    expect(roles).toEqual(["admin", "editor:plastsurgeon"]);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://id.mahoje.dk/api/roles?email=a%40b.com",
+      { headers: { Authorization: "Bearer ptok" } },
+    );
+  });
+
+  it("404 er autoritativt: tom liste (bruger uden central identitet)", async () => {
+    const fetchImpl = vi.fn(async () => jsonRes(404, { error: "not_found" }));
+    expect(await fetchCentralRolesClaim("a@b.com", { env: ENV, fetchImpl })).toEqual([]);
+  });
+
+  it("null ved manglende konfiguration (caller falder tilbage)", async () => {
+    expect(await fetchCentralRolesClaim("a@b.com", { env: {}, fetchImpl: vi.fn() })).toBeNull();
+    expect(await fetchCentralRolesClaim("", { env: ENV, fetchImpl: vi.fn() })).toBeNull();
+  });
+
+  it("null ved serverfejl, malformet JSON og netværksfejl (fail-safe)", async () => {
+    expect(await fetchCentralRolesClaim("a@b.com", { env: ENV, fetchImpl: vi.fn(async () => jsonRes(500)) })).toBeNull();
+    expect(await fetchCentralRolesClaim("a@b.com", { env: ENV, fetchImpl: vi.fn(async () => jsonRes(200, { roles: "admin" })) })).toBeNull();
+    expect(await fetchCentralRolesClaim("a@b.com", { env: ENV, fetchImpl: vi.fn(async () => { throw new Error("net"); }) })).toBeNull();
+  });
+
+  it("filtrerer ikke-streng-entries fra svaret", async () => {
+    const fetchImpl = vi.fn(async () => jsonRes(200, { roles: ["admin", 42, null] }));
+    expect(await fetchCentralRolesClaim("a@b.com", { env: ENV, fetchImpl })).toEqual(["admin"]);
+  });
+});
+
+describe("createRolesTtlCache", () => {
+  it("husker inden for TTL og glemmer efter", () => {
+    vi.useFakeTimers();
+    const cache = createRolesTtlCache(1000);
+    cache.set("a@b.com", ["admin"]);
+    expect(cache.get("a@b.com")).toEqual(["admin"]);
+    vi.advanceTimersByTime(1500);
+    expect(cache.get("a@b.com")).toBeUndefined();
+    vi.useRealTimers();
+  });
+
+  it("miss for ukendt nøgle", () => {
+    expect(createRolesTtlCache(1000).get("x")).toBeUndefined();
   });
 });
 

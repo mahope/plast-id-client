@@ -18,6 +18,7 @@ export const DISCOVERY_PATH = "/api/auth/.well-known/openid-configuration";
 export const AUTHORIZE_PATH = "/api/auth/oauth2/authorize";
 export const AUDIT_INGEST_PATH = "/api/audit/ingest";
 export const PROVISION_PATH = "/api/provision";
+export const ROLES_LOOKUP_PATH = "/api/roles";
 export const OAUTH_CALLBACK_PATH = "/api/auth/oauth2/callback/plast-id";
 export const OAUTH_SILENT_CALLBACK_PATH = "/api/auth/oauth2/callback/plast-id-silent";
 
