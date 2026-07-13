@@ -60,16 +60,29 @@ export function plastIdServerPlugins(env: Env = process.env) {
  * Silent-provideren SKAL være trusted: den repræsenterer præcis samme tillidsforhold
  * (samme clientId/secret/IdP), og uden den ville en brugers første silent login fejle
  * hårdt ("account not linked") når IdP-emailen ikke er verificeret.
+ *
+ * `requireLocalEmailVerified: false` er PÅKRÆVET for at koble en Plast ID-login til
+ * en EKSISTERENDE lokal konto hvis lokale email endnu ikke er verificeret. Better
+ * Auth's default (`true`, se oauth2/link-account.ts) afviser ellers linking med
+ * `account_not_linked` når den lokale række har `emailVerified=false` — hvilket
+ * gælder alle pre-SSO email/password-konti der aldrig klikkede verifikationslinket.
+ * En succesfuld Plast ID-autentificering beviser allerede ejerskab af identiteten
+ * (trusted IdP, samme clientId/secret), så det lokale verifikationskrav tjener intet
+ * sikkerhedsformål her og ville permanent spærre SSO-sammenkobling for netop de
+ * eksisterende brugere denne suite skal samle. Email-match håndhæves stadig via
+ * `allowDifferentEmails: false`.
  */
 export const plastIdAccountLinking: {
   enabled: boolean;
   trustedProviders: string[];
   allowDifferentEmails: boolean;
+  requireLocalEmailVerified: boolean;
 } = {
   enabled: true,
   // Mutabel string[] (ikke readonly) — Better Auths accountLinking-type kræver det.
   trustedProviders: [PLAST_ID_PROVIDER_ID, PLAST_ID_SILENT_PROVIDER_ID],
   allowDifferentEmails: false,
+  requireLocalEmailVerified: false,
 };
 
 /**

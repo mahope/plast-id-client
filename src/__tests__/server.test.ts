@@ -47,6 +47,13 @@ describe("plastIdAccountLinking", () => {
     expect(plastIdAccountLinking.allowDifferentEmails).toBe(false);
     expect(plastIdAccountLinking.enabled).toBe(true);
   });
+  it("linker til eksisterende lokal konto selv når dens email er uverificeret", () => {
+    // Better Auth's default (requireLocalEmailVerified: true) afviser ellers
+    // linking med `account_not_linked` for pre-SSO email/password-konti der aldrig
+    // verificerede deres email. Plast ID er en trusted IdP, så en succesfuld login
+    // beviser allerede ejerskab — email-match sikres via allowDifferentEmails:false.
+    expect(plastIdAccountLinking.requireLocalEmailVerified).toBe(false);
+  });
 });
 
 describe("getPlastIdRoles", () => {
