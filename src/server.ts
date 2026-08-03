@@ -4,17 +4,47 @@
  * Erstatter den copy-paste'ede SSO-glue i hver app. Importér i appens `auth.ts`.
  */
 import { genericOAuth } from "better-auth/plugins";
+import type { BetterAuthPlugin } from "better-auth";
 import {
   PLAST_ID_PROVIDER_ID,
   PLAST_ID_SILENT_PROVIDER_ID,
   plastIdConfig,
   isPlastIdConfigured,
+  plastIdCookiePrefix,
   discoveryUrl,
   auditIngestUrl,
   provisionUrl,
 } from "./config.js";
 
 type Env = Record<string, string | undefined>;
+
+/**
+ * Fejler hårdt ved boot hvis appen deler cookie-domæne på tværs af suiten
+ * (`advanced.crossSubDomainCookies`) uden selv at have sat et distinkt
+ * `advanced.cookiePrefix`. Uden det navngiver Better Auth's default ("better-auth")
+ * appens session-cookie identisk med IdP'ens egen — IdP'en læser appens token som
+ * sit eget, finder ingen matchende session, og viser login-formularen igen
+ * (plast-id#64, jpbrs#147). Se `plastIdCookiePrefix()` for den anbefalede værdi.
+ */
+export function plastIdCookieGuard(): BetterAuthPlugin {
+  return {
+    id: "plast-id-cookie-guard",
+    init(ctx) {
+      const advanced = ctx.options?.advanced;
+      const sharesCookieDomain = Boolean(advanced?.crossSubDomainCookies?.enabled);
+      const prefix = advanced?.cookiePrefix;
+      if (sharesCookieDomain && (!prefix || prefix === "better-auth")) {
+        throw new Error(
+          '[plast-id-client] advanced.crossSubDomainCookies is enabled without an app-specific advanced.cookiePrefix. ' +
+            'Every suite app sharing this cookie domain would write the same session-cookie name as Plast ID itself, ' +
+            "so the IdP reads this app's token as its own and shows the login form again. " +
+            "Set advanced.cookiePrefix (see plastIdCookiePrefix() from '@mahope/plast-id-client/config') to a value distinct from the default. " +
+            "See mahope/plast-id-client#5.",
+        );
+      }
+    },
+  };
+}
 
 /**
  * Plast ID som OIDC-client. Returnerer en plugin-liste til betterAuth({ plugins })
@@ -48,6 +78,7 @@ export function plastIdServerPlugins(env: Env = process.env) {
         { providerId: PLAST_ID_SILENT_PROVIDER_ID, ...base, prompt: "none" as const },
       ],
     }),
+    plastIdCookieGuard(),
   ];
 }
 
@@ -173,4 +204,4 @@ export async function auditIngest(
   }
 }
 
-export { PLAST_ID_PROVIDER_ID, isPlastIdConfigured } from "./config.js";
+export { PLAST_ID_PROVIDER_ID, isPlastIdConfigured, plastIdCookiePrefix } from "./config.js";

@@ -55,6 +55,31 @@ export function isPlastIdConfigured(env: Env = process.env): boolean {
   return Boolean(c.issuer && c.clientId && c.clientSecret);
 }
 
+/**
+ * Better Auth joiner cookie-navnet som `${prefix}.${cookieName}` — punktum og andre
+ * URL-særtegn i prefixet ville producere et ugyldigt/dobbelttydigt cookie-navn.
+ * Reducér til det tegnsæt cookie-navne faktisk tillader.
+ */
+export function sanitizeCookiePrefix(value: string): string {
+  const cleaned = value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return cleaned || "plast-id-app";
+}
+
+/**
+ * Appens cookie-prefix, afledt af den samme client-id den allerede autentificerer
+ * sig med hos Plast ID. Bruges til `betterAuth({ advanced: { cookiePrefix } })` så
+ * apper deler ét entydigt navn med IdP'en i stedet for at kollidere på Better
+ * Auth's default ("better-auth") — se mahope/plast-id-client#5.
+ */
+export function plastIdCookiePrefix(env: Env = process.env): string | undefined {
+  const clientId = plastIdConfig(env).clientId;
+  return clientId ? sanitizeCookiePrefix(clientId) : undefined;
+}
+
 export function discoveryUrl(issuer: string): string {
   return `${trimSlash(issuer)}${DISCOVERY_PATH}`;
 }
