@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   plastIdServerPlugins,
   plastIdAccountLinking,
+  plastIdCookieGuard,
   getPlastIdRoles,
   provisionToPlastId,
   auditIngest,
@@ -20,8 +21,8 @@ describe("plastIdServerPlugins", () => {
   it("returnerer tom liste når SSO ikke er konfigureret", () => {
     expect(plastIdServerPlugins({})).toEqual([]);
   });
-  it("returnerer ét plugin når konfigureret", () => {
-    expect(plastIdServerPlugins(configured)).toHaveLength(1);
+  it("returnerer genericOAuth + cookie-guard når konfigureret", () => {
+    expect(plastIdServerPlugins(configured)).toHaveLength(2);
   });
   it("registrerer både normal og silent provider (prompt=none) mod samme client", () => {
     const [plugin] = plastIdServerPlugins(configured);
@@ -35,6 +36,49 @@ describe("plastIdServerPlugins", () => {
     expect(silent.pkce).toBe(true);
     const normal = cfg.find((c) => c.providerId === "plast-id")!;
     expect(normal.prompt).toBeUndefined();
+  });
+});
+
+describe("plastIdCookieGuard", () => {
+  const ctx = (advanced: Record<string, unknown> | undefined) => ({ options: { advanced } });
+
+  it("kaster hvis crossSubDomainCookies er slået til uden et ikke-default cookiePrefix", () => {
+    const guard = plastIdCookieGuard();
+    expect(() =>
+      guard.init!(ctx({ crossSubDomainCookies: { enabled: true, domain: ".mahoje.dk" } }) as never),
+    ).toThrow(/cookiePrefix/);
+  });
+
+  it("kaster også hvis prefixet eksplicit er sat til Better Auths default-værdi", () => {
+    const guard = plastIdCookieGuard();
+    expect(() =>
+      guard.init!(
+        ctx({
+          crossSubDomainCookies: { enabled: true, domain: ".mahoje.dk" },
+          cookiePrefix: "better-auth",
+        }) as never,
+      ),
+    ).toThrow(/cookiePrefix/);
+  });
+
+  it("kaster ikke når appen har sat sit eget prefix", () => {
+    const guard = plastIdCookieGuard();
+    expect(() =>
+      guard.init!(
+        ctx({
+          crossSubDomainCookies: { enabled: true, domain: ".mahoje.dk" },
+          cookiePrefix: "jpbrs",
+        }) as never,
+      ),
+    ).not.toThrow();
+  });
+
+  it("kaster ikke når cookien slet ikke deles på tværs af domæner", () => {
+    const guard = plastIdCookieGuard();
+    expect(() => guard.init!(ctx(undefined) as never)).not.toThrow();
+    expect(() =>
+      guard.init!(ctx({ crossSubDomainCookies: { enabled: false } }) as never),
+    ).not.toThrow();
   });
 });
 

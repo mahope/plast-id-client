@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   plastIdConfig,
   isPlastIdConfigured,
+  plastIdCookiePrefix,
+  sanitizeCookiePrefix,
   discoveryUrl,
   authorizeUrl,
   auditIngestUrl,
@@ -31,6 +33,29 @@ describe("isPlastIdConfigured", () => {
     expect(isPlastIdConfigured(full)).toBe(true);
     expect(isPlastIdConfigured({ PLAST_SSO_ISSUER: "https://x" })).toBe(false);
     expect(isPlastIdConfigured({})).toBe(false);
+  });
+});
+
+describe("sanitizeCookiePrefix", () => {
+  it("lowercaser og erstatter ugyldige tegn med bindestreg", () => {
+    expect(sanitizeCookiePrefix("PlastSurgeon")).toBe("plastsurgeon");
+    expect(sanitizeCookiePrefix("jpbrs.staging")).toBe("jpbrs-staging");
+    expect(sanitizeCookiePrefix("plast_id client!!")).toBe("plast-id-client");
+  });
+  it("kollapser gentagne bindestreger og trimmer kant-bindestreger", () => {
+    expect(sanitizeCookiePrefix("--a...b--")).toBe("a-b");
+  });
+  it("falder tilbage til en sikker værdi hvis intet gyldigt tegn tilbage", () => {
+    expect(sanitizeCookiePrefix("...")).toBe("plast-id-app");
+  });
+});
+
+describe("plastIdCookiePrefix", () => {
+  it("afleder prefix af PLAST_SSO_CLIENT_ID", () => {
+    expect(plastIdCookiePrefix(full)).toBe("plastsurgeon");
+  });
+  it("er undefined uden en konfigureret client id", () => {
+    expect(plastIdCookiePrefix({})).toBeUndefined();
   });
 });
 

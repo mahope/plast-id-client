@@ -36,10 +36,15 @@ PLAST_AUDIT_TOKEN=...                       # appens audit-ingest-token (valgfri
 
 ```ts
 // auth.ts (server)
-import { plastIdServerPlugins, plastIdAccountLinking, provisionToPlastId } from "@mahope/plast-id-client/server";
+import { plastIdServerPlugins, plastIdAccountLinking, plastIdCookiePrefix, provisionToPlastId } from "@mahope/plast-id-client/server";
 
 export const auth = betterAuth({
   account: { accountLinking: plastIdAccountLinking },
+  // Påkrævet hvis appen deler cookie-domæne med resten af suiten (crossSubDomainCookies).
+  // Better Auth's default cookiePrefix ("better-auth") ville ellers kollidere med IdP'ens
+  // egen session-cookie — plastIdServerPlugins() inkluderer et guard-plugin der fejler
+  // hårdt ved boot hvis crossSubDomainCookies er slået til uden dette sat.
+  advanced: { cookiePrefix: plastIdCookiePrefix() },
   plugins: [...plastIdServerPlugins(), nextCookies()],
   databaseHooks: {
     user: { create: { after: async (user) => {
