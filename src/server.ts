@@ -71,6 +71,10 @@ export function plastIdServerPlugins(env: Env = process.env) {
  * sikkerhedsformål her og ville permanent spærre SSO-sammenkobling for netop de
  * eksisterende brugere denne suite skal samle. Email-match håndhæves stadig via
  * `allowDifferentEmails: false`.
+ *
+ * Den residuale account-takeover-risiko (link til en fremmed-ejet lokal konto med
+ * password) lukkes af [[plastIdAccountCreateBefore]], som SKAL wires i appens
+ * `databaseHooks.account.create.before` sammen med denne config.
  */
 export const plastIdAccountLinking: {
   enabled: boolean;
@@ -84,6 +88,68 @@ export const plastIdAccountLinking: {
   allowDifferentEmails: false,
   requireLocalEmailVerified: false,
 };
+
+/**
+ * Account-linking guard — `databaseHooks.account.create.before`-hook.
+ *
+ * Lukker en pre-registration account-takeover: [[plastIdAccountLinking]] gør
+ * Plast ID til trusted provider med `requireLocalEmailVerified: false`, så en
+ * Plast ID-login kobles til en eksisterende lokal konto på email-match — også
+ * hvis den lokale konto er oprettet af en ANDEN. En angriber kunne derfor
+ * pre-registrere en (uverificeret) lokal konto på offerets email med sit EGET
+ * password; når offeret senere logger ind via Plast ID, ville Better Auth linke
+ * SSO-identiteten til angriberens række (og flippe `emailVerified` til true),
+ * mens angriberens password stadig virker — fuld kontoovertagelse.
+ *
+ * Regel ("nul password-logins"): tillad kun linking til en lokal konto UDEN et
+ * password-credential. Datamodellen har ingen per-login-metode-historik, så
+ * fraværet af en `credential`-konto er den sunde proxy for "har aldrig logget
+ * ind med password". Hooken KASTER (afviser linket + ingen session oprettes,
+ * jf. Better Auths link-account try/catch) hvis en credential-konto findes for
+ * bruger-id'et. En helt ny SSO-bruger (ingen konti endnu) rammes ikke.
+ *
+ * BEMÆRK: dette blokerer også SSO-sammenkobling for eksisterende, ægte
+ * password-brugere (de har et credential) — de må verificere/koble eksplicit.
+ * Det er den bevidste tradeoff ved "nul password-logins".
+ *
+ * Wires i appen: `databaseHooks: { account: { create: { before: plastIdAccountCreateBefore } } }`.
+ */
+export async function plastIdAccountCreateBefore(
+  account: { providerId?: string | null; userId?: string | null },
+  context:
+    | {
+        internalAdapter?: {
+          findAccounts?: (
+            userId: string,
+          ) => Promise<Array<{ providerId?: string | null }>>;
+        };
+      }
+    | null
+    | undefined,
+): Promise<void> {
+  // Kun relevant når det er en Plast ID OAuth-konto der oprettes/linkes.
+  if (
+    account.providerId !== PLAST_ID_PROVIDER_ID &&
+    account.providerId !== PLAST_ID_SILENT_PROVIDER_ID
+  ) {
+    return;
+  }
+  const userId = account.userId;
+  const findAccounts = context?.internalAdapter?.findAccounts;
+  // Ingen bruger-id eller ingen adapter → kan ikke tjekke; fail-open (bryder ikke
+  // auth). En helt ny SSO-bruger har alligevel ingen credential-konto.
+  if (!userId || !findAccounts) return;
+  const existing = await findAccounts(userId);
+  const hasPasswordCredential = existing.some(
+    (a) => a.providerId === "credential",
+  );
+  if (hasPasswordCredential) {
+    throw new Error(
+      "plast-id: refusing to link a Plast ID login to a local account that has a " +
+        "password credential (potential pre-registration account takeover)",
+    );
+  }
+}
 
 /**
  * Udtræk roller fra Plast ID's `roles`-claim. GLOBAL/additiv: app-scoped roller

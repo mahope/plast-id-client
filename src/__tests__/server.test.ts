@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   plastIdServerPlugins,
   plastIdAccountLinking,
+  plastIdAccountCreateBefore,
   getPlastIdRoles,
   provisionToPlastId,
   auditIngest,
@@ -53,6 +54,54 @@ describe("plastIdAccountLinking", () => {
     // verificerede deres email. Plast ID er en trusted IdP, så en succesfuld login
     // beviser allerede ejerskab — email-match sikres via allowDifferentEmails:false.
     expect(plastIdAccountLinking.requireLocalEmailVerified).toBe(false);
+  });
+});
+
+describe("plastIdAccountCreateBefore", () => {
+  const ctx = (accounts: Array<{ providerId?: string | null }>) => ({
+    internalAdapter: { findAccounts: vi.fn(async () => accounts) },
+  });
+
+  it("afviser link til en konto der har et password-credential (takeover-guard)", async () => {
+    await expect(
+      plastIdAccountCreateBefore(
+        { providerId: PLAST_ID_PROVIDER_ID, userId: "u1" },
+        ctx([{ providerId: "credential" }]),
+      ),
+    ).rejects.toThrow(/password credential/);
+  });
+
+  it("tillader link når kontoen ikke har et password-credential", async () => {
+    await expect(
+      plastIdAccountCreateBefore(
+        { providerId: "plast-id-silent", userId: "u1" },
+        ctx([{ providerId: "google" }]),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it("tillader en helt ny SSO-bruger uden konti", async () => {
+    await expect(
+      plastIdAccountCreateBefore(
+        { providerId: PLAST_ID_PROVIDER_ID, userId: "u1" },
+        ctx([]),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rører ikke oprettelsen af ikke-Plast-ID-konti (fx credential selv)", async () => {
+    const c = ctx([{ providerId: "credential" }]);
+    await expect(
+      plastIdAccountCreateBefore({ providerId: "credential", userId: "u1" }, c),
+    ).resolves.toBeUndefined();
+    // Guarden slår slet ikke til for ikke-Plast-ID-providers → ingen adapter-opslag.
+    expect(c.internalAdapter.findAccounts).not.toHaveBeenCalled();
+  });
+
+  it("fail-open når context/adapter mangler (bryder ikke auth)", async () => {
+    await expect(
+      plastIdAccountCreateBefore({ providerId: PLAST_ID_PROVIDER_ID, userId: "u1" }, null),
+    ).resolves.toBeUndefined();
   });
 });
 
