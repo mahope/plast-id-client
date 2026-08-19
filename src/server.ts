@@ -114,15 +114,20 @@ export const plastIdAccountLinking: {
  *
  * Wires i appen: `databaseHooks: { account: { create: { before: plastIdAccountCreateBefore } } }`.
  */
+type FindAccounts = (
+  userId: string,
+) => Promise<Array<{ providerId?: string | null }>>;
+
 export async function plastIdAccountCreateBefore(
   account: { providerId?: string | null; userId?: string | null },
   context:
     | {
-        internalAdapter?: {
-          findAccounts?: (
-            userId: string,
-          ) => Promise<Array<{ providerId?: string | null }>>;
-        };
+        // Better Auths hook-context er endpoint-contexten; den resolverede
+        // AuthContext (med internalAdapter) ligger under `.context`. Vi læser
+        // den nestede sti og falder tilbage til top-niveau for robusthed mod
+        // versionsforskelle.
+        context?: { internalAdapter?: { findAccounts?: FindAccounts } };
+        internalAdapter?: { findAccounts?: FindAccounts };
       }
     | null
     | undefined,
@@ -135,7 +140,9 @@ export async function plastIdAccountCreateBefore(
     return;
   }
   const userId = account.userId;
-  const findAccounts = context?.internalAdapter?.findAccounts;
+  const findAccounts =
+    context?.context?.internalAdapter?.findAccounts ??
+    context?.internalAdapter?.findAccounts;
   // Ingen bruger-id eller ingen adapter → kan ikke tjekke; fail-open (bryder ikke
   // auth). En helt ny SSO-bruger har alligevel ingen credential-konto.
   if (!userId || !findAccounts) return;

@@ -58,8 +58,11 @@ describe("plastIdAccountLinking", () => {
 });
 
 describe("plastIdAccountCreateBefore", () => {
+  // Better Auths hook-context nester den resolverede AuthContext (og dermed
+  // internalAdapter) under `.context` — mock'en skal matche den ægte form,
+  // ellers tester vi ikke den sti hooken faktisk læser i produktion.
   const ctx = (accounts: Array<{ providerId?: string | null }>) => ({
-    internalAdapter: { findAccounts: vi.fn(async () => accounts) },
+    context: { internalAdapter: { findAccounts: vi.fn(async () => accounts) } },
   });
 
   it("afviser link til en konto der har et password-credential (takeover-guard)", async () => {
@@ -95,7 +98,7 @@ describe("plastIdAccountCreateBefore", () => {
       plastIdAccountCreateBefore({ providerId: "credential", userId: "u1" }, c),
     ).resolves.toBeUndefined();
     // Guarden slår slet ikke til for ikke-Plast-ID-providers → ingen adapter-opslag.
-    expect(c.internalAdapter.findAccounts).not.toHaveBeenCalled();
+    expect(c.context.internalAdapter.findAccounts).not.toHaveBeenCalled();
   });
 
   it("fail-open når context/adapter mangler (bryder ikke auth)", async () => {
