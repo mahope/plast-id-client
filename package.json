@@ -49,6 +49,6 @@
     "@types/node": "^26.0.1",
     "better-auth": "~1.6.30",
     "typescript": "^5",
-    "vitest": "^3.2.7"
+    "vitest": "^5.0.3"
   }
 }
