@@ -1,0 +1,92 @@
+import { createServer } from "node:http";
+import { generateKeyPairSync, sign } from "node:crypto";
+import { afterEach, expect, it } from "vitest";
+import { betterAuth } from "better-auth";
+import { memoryAdapter } from "better-auth/adapters/memory";
+import { createAuthClient } from "better-auth/client";
+import { plastIdClientPlugin, signInWithPlastId } from "../client.js";
+import { plastIdServerPlugins, plastIdAccountLinking } from "../server.js";
+import { plastIdCookiePrefix } from "../config.js";
+
+const servers: ReturnType<typeof createServer>[] = [];
+afterEach(async () => {
+  await Promise.all(servers.splice(0).map((s) => new Promise<void>((resolve) => s.close(() => resolve()))));
+});
+
+it.each(["plast-id", "plast-id-silent"])("completes %s through the real Better Auth client, callback and session API", async (providerId) => {
+  const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  let nonce: string | null = null;
+  let tokenBody = new URLSearchParams();
+  let issuer = "";
+  const fixture = createServer(async (req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    if (req.url?.endsWith("openid-configuration")) {
+      res.end(JSON.stringify({ issuer, authorization_endpoint: `${issuer}/authorize`, token_endpoint: `${issuer}/token`, userinfo_endpoint: `${issuer}/userinfo`, jwks_uri: `${issuer}/jwks`, id_token_signing_alg_values_supported: ["RS256"] }));
+    } else if (req.url === "/jwks") {
+      res.end(JSON.stringify({ keys: [{ ...publicKey.export({ format: "jwk" }), kid: "fixture", alg: "RS256", use: "sig" }] }));
+    } else if (req.url === "/token") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      tokenBody = new URLSearchParams(body);
+      const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+      const now = Math.floor(Date.now() / 1000);
+      const payload = `${encode({ alg: "RS256", kid: "fixture" })}.${encode({ iss: issuer, aud: "compat-app", sub: "fixture-user", email: "fixture@example.test", email_verified: true, name: "Fixture", iat: now, exp: now + 300, ...(nonce ? { nonce } : {}) })}`;
+      res.end(JSON.stringify({ access_token: "fixture-access", token_type: "Bearer", expires_in: 300, id_token: `${payload}.${sign("RSA-SHA256", Buffer.from(payload), privateKey).toString("base64url")}` }));
+    } else if (req.url === "/userinfo") {
+      res.end(JSON.stringify({ sub: "fixture-user", id: "fixture-user", email: "fixture@example.test", email_verified: true, name: "Fixture" }));
+    } else {
+      res.statusCode = 404;
+      res.end("{}");
+    }
+  });
+  servers.push(fixture);
+  await new Promise<void>((resolve) => fixture.listen(0, "127.0.0.1", resolve));
+  issuer = `http://127.0.0.1:${(fixture.address() as { port: number }).port}`;
+  const env = { PLAST_SSO_ISSUER: issuer, PLAST_SSO_CLIENT_ID: "compat-app", PLAST_SSO_CLIENT_SECRET: "fixture-secret" };
+  const advanced = { cookiePrefix: plastIdCookiePrefix(env), crossSubDomainCookies: { enabled: true, domain: "localhost" } };
+  const auth = betterAuth({ baseURL: "http://localhost:3000", secret: "fixture-secret-at-least-thirty-two-characters", database: memoryAdapter({ user: [], session: [], account: [], verification: [] }), account: { accountLinking: plastIdAccountLinking }, advanced, plugins: plastIdServerPlugins(env), telemetry: { enabled: false } });
+  let cookies = "";
+  const capture = (response: Response) => {
+    const values = response.headers.getSetCookie().map((c) => c.split(";")[0]);
+    if (values.length) cookies = values.join("; ");
+  };
+  const client = createAuthClient({ baseURL: "http://localhost:3000", plugins: [plastIdClientPlugin()], fetchOptions: { customFetchImpl: async (url, init) => {
+    const headers = new Headers(init?.headers);
+    headers.set("origin", "http://localhost:3000");
+    headers.set("cookie", cookies);
+    const response = await auth.handler(new Request(url, { ...init, headers }));
+    capture(response);
+    return response;
+  } } });
+  const result = providerId === "plast-id"
+    ? await signInWithPlastId(client, { callbackURL: "/dashboard" })
+    : await client.signIn.oauth2({ providerId, callbackURL: "/dashboard" });
+  const login = result as { data: { url: string } | null; error: unknown };
+  expect(login.error).toBeNull();
+  const authorize = new URL(login.data!.url);
+  expect(authorize.origin).toBe(issuer);
+  expect(authorize.searchParams.get("client_id")).toBe("compat-app");
+  expect(authorize.searchParams.get("prompt")).toBe(providerId.endsWith("silent") ? "none" : null);
+  expect(authorize.searchParams.get("code_challenge_method")).toBe("S256");
+  expect(authorize.searchParams.get("scope")?.split(" ")).toEqual(expect.arrayContaining(["openid", "profile", "email"]));
+  expect(authorize.searchParams.has("resource")).toBe(false);
+  nonce = authorize.searchParams.get("nonce");
+  const callback = new URL(authorize.searchParams.get("redirect_uri")!);
+  callback.searchParams.set("code", "fixture-code");
+  callback.searchParams.set("state", authorize.searchParams.get("state")!);
+  const response = await auth.handler(new Request(callback, { headers: { cookie: cookies } }));
+  expect(response.status).toBe(302);
+  expect(new URL(response.headers.get("location")!, "http://localhost:3000").pathname).toBe("/dashboard");
+  capture(response);
+  expect(cookies).toContain("compat-app.session_token=");
+  expect(cookies).not.toContain("better-auth.session_token=");
+  expect(tokenBody.get("code_verifier")).toBeTruthy();
+  expect(tokenBody.get("redirect_uri")).toBe(authorize.searchParams.get("redirect_uri"));
+  const session = await client.getSession();
+  expect(session.error).toBeNull();
+  expect(session.data?.user.email).toBe("fixture@example.test");
+  expect(session.data?.session.userId).toBe(session.data?.user.id);
+
+  const unsafe = betterAuth({ baseURL: "http://localhost:3000", secret: "fixture-secret-at-least-thirty-two-characters", advanced: { ...advanced, cookiePrefix: "better-auth" }, plugins: plastIdServerPlugins(env), telemetry: { enabled: false } });
+  await expect(unsafe.$context).rejects.toThrow(/cookiePrefix/);
+});
