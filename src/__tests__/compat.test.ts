@@ -9,6 +9,26 @@ import { plastIdServerPlugins, plastIdAccountLinking } from "../server.js";
 import { plastIdCookiePrefix } from "../config.js";
 
 const servers: ReturnType<typeof createServer>[] = [];
+it("preserves the typed OAuth2 redirect response without a cast", async () => {
+  const client = createAuthClient({
+    baseURL: "http://localhost:3000",
+    plugins: [plastIdClientPlugin()],
+    fetchOptions: {
+      customFetchImpl: async () => Response.json({
+        url: "http://localhost:3000/authorize",
+        redirect: false,
+      }),
+    },
+  });
+  const result = await client.signIn.oauth2({ providerId: "plast-id", disableRedirect: true });
+  expect(result.error).toBeNull();
+  if (!result.data) throw new Error("Missing sign-in response");
+  const url: string = result.data.url;
+  const redirect: boolean = result.data.redirect;
+  expect(url).toBe("http://localhost:3000/authorize");
+  expect(redirect).toBe(false);
+});
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((s) => new Promise<void>((resolve) => s.close(() => resolve()))));
 });

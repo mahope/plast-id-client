@@ -119,6 +119,19 @@ for the requested single review from Mads' PC; no PR, merge or deploy was perfor
 
 ## Suggested PR
 
+## Review follow-up
+
+The P1 finding about the adapter's untyped fetch response was confirmed. A new
+cast-free consumer test failed typecheck with TS2339 on both `data.url` and
+`data.redirect` before the fix. The adapter now declares the redirect response
+shape explicitly. Build, typecheck and all 79 tests pass on Better Auth 1.7.15;
+the targeted compatibility suite passes all five tests. The existing CI matrix
+also typechecks this new test on 1.2.8 and 1.6.30; those versions were not rerun
+locally for this follow-up. No lint script is configured. No review findings
+were rejected or left unresolved. No dependencies were installed or changed.
+
+## Suggested PR (updated verification)
+
 Title: **Support Better Auth 1.7 while preserving legacy SSO login**
 
 Description:

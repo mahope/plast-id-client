@@ -4,6 +4,7 @@
 
 - Preserve the SDK's OAuth2 sign-in API on Better Auth 1.7 by routing through the
   core social endpoint when the legacy Generic OAuth client plugin is absent.
+- Preserve typed OAuth2 redirect responses (`url` and `redirect`) for consumers.
 - Pin the development dependency to Better Auth 1.7.15, the newest 1.7 release at
   least three days old on 2026-11-04. Keep the tested `>=1.2.8` peer range.
 - Add real client/server OIDC flow coverage and CI against 1.2.8, 1.6.30 and 1.7.15,

@@ -31,7 +31,7 @@ export function plastIdClientPlugin() {
           requestSignUp?: boolean;
           additionalData?: Record<string, unknown>;
           fetchOptions?: FetchOptions;
-        }, fetchOptions: FetchOptions = {}) => $fetch(legacy ? "/sign-in/oauth2" : "/sign-in/social", {
+        }, fetchOptions: FetchOptions = {}) => $fetch<{ url: string; redirect: boolean }>(legacy ? "/sign-in/oauth2" : "/sign-in/social", {
           ...fetchOptions,
           ...inputOptions,
           method: "POST",
