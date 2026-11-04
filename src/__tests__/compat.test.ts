@@ -13,11 +13,15 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((s) => new Promise<void>((resolve) => s.close(() => resolve()))));
 });
 
-it.each(["plast-id", "plast-id-silent"])("completes %s through the real Better Auth client, callback and session API", async (providerId) => {
+it.each(["plast-id", "plast-id-silent"].flatMap((provider) => [
+  [provider, false] as const,
+  [provider, true] as const,
+]))("completes %s (existing local account: %s) through the real client, callback and session API", async (providerId, existing) => {
   const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   let nonce: string | null = null;
   let tokenBody = new URLSearchParams();
   let issuer = "";
+  let userInfoRequests = 0;
   const fixture = createServer(async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     if (req.url?.endsWith("openid-configuration")) {
@@ -30,9 +34,10 @@ it.each(["plast-id", "plast-id-silent"])("completes %s through the real Better A
       tokenBody = new URLSearchParams(body);
       const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
       const now = Math.floor(Date.now() / 1000);
-      const payload = `${encode({ alg: "RS256", kid: "fixture" })}.${encode({ iss: issuer, aud: "compat-app", sub: "fixture-user", email: "fixture@example.test", email_verified: true, name: "Fixture", iat: now, exp: now + 300, ...(nonce ? { nonce } : {}) })}`;
+      const payload = `${encode({ alg: "RS256", kid: "fixture" })}.${encode({ iss: issuer, aud: "compat-app", sub: "fixture-user", iat: now, exp: now + 300, ...(nonce ? { nonce } : {}) })}`;
       res.end(JSON.stringify({ access_token: "fixture-access", token_type: "Bearer", expires_in: 300, id_token: `${payload}.${sign("RSA-SHA256", Buffer.from(payload), privateKey).toString("base64url")}` }));
     } else if (req.url === "/userinfo") {
+      userInfoRequests++;
       res.end(JSON.stringify({ sub: "fixture-user", id: "fixture-user", email: "fixture@example.test", email_verified: true, name: "Fixture" }));
     } else {
       res.statusCode = 404;
@@ -44,7 +49,8 @@ it.each(["plast-id", "plast-id-silent"])("completes %s through the real Better A
   issuer = `http://127.0.0.1:${(fixture.address() as { port: number }).port}`;
   const env = { PLAST_SSO_ISSUER: issuer, PLAST_SSO_CLIENT_ID: "compat-app", PLAST_SSO_CLIENT_SECRET: "fixture-secret" };
   const advanced = { cookiePrefix: plastIdCookiePrefix(env), crossSubDomainCookies: { enabled: true, domain: "localhost" } };
-  const auth = betterAuth({ baseURL: "http://localhost:3000", secret: "fixture-secret-at-least-thirty-two-characters", database: memoryAdapter({ user: [], session: [], account: [], verification: [] }), account: { accountLinking: plastIdAccountLinking }, advanced, plugins: plastIdServerPlugins(env), telemetry: { enabled: false } });
+  const db = { user: existing ? [{ id: "existing-user", email: "fixture@example.test", name: "Fixture", emailVerified: false, createdAt: new Date(), updatedAt: new Date() }] : [], session: [], account: [], verification: [] };
+  const auth = betterAuth({ baseURL: "http://localhost:3000", secret: "fixture-secret-at-least-thirty-two-characters", database: memoryAdapter(db), account: { accountLinking: plastIdAccountLinking }, advanced, plugins: plastIdServerPlugins(env), telemetry: { enabled: false } });
   let cookies = "";
   const capture = (response: Response) => {
     const values = response.headers.getSetCookie().map((c) => c.split(";")[0]);
@@ -86,7 +92,11 @@ it.each(["plast-id", "plast-id-silent"])("completes %s through the real Better A
   expect(session.error).toBeNull();
   expect(session.data?.user.email).toBe("fixture@example.test");
   expect(session.data?.session.userId).toBe(session.data?.user.id);
+  if (existing) expect(session.data?.user.id).toBe("existing-user");
+  expect(db.user).toHaveLength(1);
+  expect(db.account).toHaveLength(1);
+  expect(userInfoRequests).toBeGreaterThan(0);
 
-  const unsafe = betterAuth({ baseURL: "http://localhost:3000", secret: "fixture-secret-at-least-thirty-two-characters", advanced: { ...advanced, cookiePrefix: "better-auth" }, plugins: plastIdServerPlugins(env), telemetry: { enabled: false } });
+  const unsafe = betterAuth({ baseURL: "http://localhost:3000", secret: "fixture-secret-at-least-thirty-two-characters", database: memoryAdapter({}), advanced: { ...advanced, cookiePrefix: "better-auth" }, plugins: plastIdServerPlugins(env), telemetry: { enabled: false } });
   await expect(unsafe.$context).rejects.toThrow(/cookiePrefix/);
 });

@@ -1,0 +1,29 @@
+name: Better Auth compatibility
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        better-auth: [1.2.8, 1.6.30, 1.7.15]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # Resolve without executing package code, then enforce the release-age gate.
+      - run: npm install --package-lock-only --ignore-scripts --legacy-peer-deps --save-dev --save-exact better-auth@${{ matrix.better-auth }}
+      - run: node scripts/check-release-age.mjs
+      - run: npm ci --ignore-scripts --legacy-peer-deps
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm test

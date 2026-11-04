@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { genericOAuth } from "better-auth/plugins";
 import {
   plastIdServerPlugins,
   plastIdAccountLinking,
@@ -8,6 +9,11 @@ import {
   auditIngest,
   PLAST_ID_PROVIDER_ID,
 } from "../server.js";
+
+vi.mock("better-auth/plugins", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("better-auth/plugins")>();
+  return { ...actual, genericOAuth: vi.fn(actual.genericOAuth) };
+});
 
 const configured = {
   PLAST_SSO_ISSUER: "https://id.mahoje.dk",
@@ -25,10 +31,8 @@ describe("plastIdServerPlugins", () => {
     expect(plastIdServerPlugins(configured)).toHaveLength(2);
   });
   it("registrerer både normal og silent provider (prompt=none) mod samme client", () => {
-    const [plugin] = plastIdServerPlugins(configured);
-    // genericOAuth gemmer sin config på plugin.options.config (better-auth 1.6).
-    const cfg = (plugin as unknown as { options: { config: Array<Record<string, unknown>> } })
-      .options.config;
+    plastIdServerPlugins(configured);
+    const cfg = vi.mocked(genericOAuth).mock.calls.at(-1)![0].config;
     expect(cfg.map((c) => c.providerId)).toEqual(["plast-id", "plast-id-silent"]);
     const silent = cfg.find((c) => c.providerId === "plast-id-silent")!;
     expect(silent.prompt).toBe("none");
