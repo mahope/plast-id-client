@@ -4,12 +4,42 @@
  * Importér i appens `auth-client.ts` og brug `signInWithPlastId` bag "Continue with
  * Plast ID"-knappen.
  */
-import { genericOAuthClient } from "better-auth/client/plugins";
+import * as clientPlugins from "better-auth/client/plugins";
+import type { BetterAuthClientPlugin } from "better-auth";
+import type { genericOAuth } from "better-auth/plugins";
 import { PLAST_ID_PROVIDER_ID } from "./config.js";
+
+type ClientFetch = Parameters<NonNullable<BetterAuthClientPlugin["getActions"]>>[0];
+type FetchOptions = NonNullable<Parameters<ClientFetch>[1]>;
 
 /** Plugin til createAuthClient({ plugins: [plastIdClientPlugin()] }). */
 export function plastIdClientPlugin() {
-  return genericOAuthClient();
+  // Better Auth 1.7 folds Generic OAuth into the core social endpoints.
+  const legacy = typeof Reflect.get(clientPlugins, "genericOAuthClient") === "function";
+  return {
+    id: "generic-oauth-client",
+    $InferServerPlugin: {} as ReturnType<typeof genericOAuth>,
+    getActions: ($fetch) => ({
+      signIn: {
+        oauth2: ({ providerId, fetchOptions: inputOptions, ...args }: {
+          providerId: string;
+          callbackURL?: string;
+          errorCallbackURL?: string;
+          newUserCallbackURL?: string;
+          disableRedirect?: boolean;
+          scopes?: string[];
+          requestSignUp?: boolean;
+          additionalData?: Record<string, unknown>;
+          fetchOptions?: FetchOptions;
+        }, fetchOptions: FetchOptions = {}) => $fetch<{ url: string; redirect: boolean }>(legacy ? "/sign-in/oauth2" : "/sign-in/social", {
+          ...fetchOptions,
+          ...inputOptions,
+          method: "POST",
+          body: legacy ? { providerId, ...args } : { provider: providerId, ...args },
+        }),
+      },
+    }),
+  } satisfies BetterAuthClientPlugin;
 }
 
 /** Minimal form af det auth-client-stykke vi bruger (undgår en hård better-auth-typeafhængighed). */
