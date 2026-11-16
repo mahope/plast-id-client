@@ -14,7 +14,9 @@ import {
   discoveryUrl,
   auditIngestUrl,
   provisionUrl,
+  profileSeedUrl,
 } from "./config.js";
+import type { PlastIdProfileSeed, PlastIdProfileSeedResult } from "./profile.js";
 
 type Env = Record<string, string | undefined>;
 
@@ -200,6 +202,40 @@ export async function auditIngest(
     return { ok: res.ok, status: res.status };
   } catch (err) {
     console.warn(`[plast-id-client] audit ingest failed (non-fatal): ${(err as Error).message}`);
+    return { ok: false, status: 0 };
+  }
+}
+
+/**
+ * plast-id#122 — seed TOMME felter i den delte Plast ID-profil fra appens
+ * eksisterende profil, én gang pr. bruger (kald efter et Plast ID-login, med
+ * brugerens `sub`). Plast ID overskriver aldrig et felt med en værdi, så et
+ * gentaget kald er ufarligt. Fail-safe: kaster aldrig. No-op (ok:false,
+ * status:0) hvis issuer/provision-token mangler.
+ */
+export async function seedPlastIdProfile(
+  sub: string,
+  profile: PlastIdProfileSeed,
+  opts: { env?: Env; fetchImpl?: typeof fetch } = {},
+): Promise<PlastIdProfileSeedResult> {
+  const env = opts.env ?? process.env;
+  const doFetch = opts.fetchImpl ?? fetch;
+  const c = plastIdConfig(env);
+  if (!c.issuer || !c.provisionToken) return { ok: false, status: 0 };
+  try {
+    const res = await doFetch(profileSeedUrl(c.issuer), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${c.provisionToken}`,
+      },
+      body: JSON.stringify({ sub, profile }),
+    });
+    if (!res.ok) return { ok: false, status: res.status };
+    const json = (await res.json().catch(() => ({}))) as Omit<PlastIdProfileSeedResult, "ok" | "status">;
+    return { ok: true, status: res.status, ...json };
+  } catch (err) {
+    console.warn(`[plast-id-client] profile seed failed (non-fatal): ${(err as Error).message}`);
     return { ok: false, status: 0 };
   }
 }

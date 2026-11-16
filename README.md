@@ -104,6 +104,23 @@ export const authClient = createAuthClient({ plugins: [plastIdClientPlugin()] })
 import { buildSilentAuthUrl, shouldAttemptSilentAuth, isLoginRequiredError } from "@mahope/plast-id-client/silent";
 ```
 
+```ts
+// delt faglig profil (plast-id#122) — bed om scopet "profile" (standard i plastIdServerPlugins)
+import { profileFromClaims, profileFromIdToken, PLAST_ID_PROFILE_CLAIMS } from "@mahope/plast-id-client/profile";
+import { seedPlastIdProfile } from "@mahope/plast-id-client/server";
+
+// Ved hvert login: opdatér de delte felter lokalt. null = ingen profil i tokenet, behold den lokale kopi.
+const profile = profileFromIdToken(freshestIdToken(accounts));
+if (profile) await db.update(user).set({ title: profile.title, orcid: profile.orcid /* … */ });
+
+// Én gang pr. bruger, efter et Plast ID-login: seed TOMME Plast ID-felter fra appens egen profil.
+// Plast ID overskriver aldrig et felt med en værdi, så et gentaget kald er ufarligt.
+await seedPlastIdProfile(plastIdSub, { title: local.title, institution: local.institution, country: local.country });
+```
+
+Claim-navne og seed-kontrakten står i plast-id `docs/shared-profile.md`. Profilen er
+med i både ID-token og userinfo, når `profile`-scopet er givet.
+
 ## Udvikling
 
 ```bash

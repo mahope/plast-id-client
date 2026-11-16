@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.2 (proposed, unreleased)
+
+- Add `@mahope/plast-id-client/profile`: the claim names of the shared professional
+  profile Plast ID owns (plast-id#122), the `PlastIdProfile` type, and
+  `profileFromClaims` / `profileFromIdToken`, which map id_token or userinfo claims to
+  a profile and return `null` when the token carries none (keep the local copy).
+- Add `seedPlastIdProfile(sub, profile)` to `/server`: fills EMPTY Plast ID profile
+  fields once from the app's existing profile via `POST /api/provision/profile`, with
+  the app's provision token. Fail-safe, never throws.
+
 ## 0.4.1 (proposed, unreleased)
 
 - Preserve the SDK's OAuth2 sign-in API on Better Auth 1.7 by routing through the

@@ -5,6 +5,7 @@
  *   import { plastIdServerPlugins, provisionToPlastId } from "@mahope/plast-id-client/server";
  *   import { plastIdClientPlugin, signInWithPlastId } from "@mahope/plast-id-client/client";
  *   import { buildSilentAuthUrl, shouldAttemptSilentAuth } from "@mahope/plast-id-client/silent";
+ *   import { profileFromClaims, profileFromIdToken } from "@mahope/plast-id-client/profile";
  *
  * Denne rod re-eksporterer kun det rene, framework-agnostiske config-lag.
  */
